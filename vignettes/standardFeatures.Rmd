@@ -1,5 +1,5 @@
 ---
-title: "Bayesian Optimization of Hyperparameters"
+title: "Introduction to ParBayesianOptimization"
 author: "Samuel Wilson"
 date: "`r Sys.Date()`"
 output: rmarkdown::html_vignette
@@ -17,6 +17,7 @@ knitr::opts_chunk$set(
 options(width = 1000)
 ```
 
+********
 ## Package Process
 
 Machine learning projects will commonly require a user to "tune" a model's hyperparameters to find a good balance between bias and variance. Several tools are available in a data scientist's toolbox to handle this task, the most blunt of which is a grid search. A grid search gauges the model performance over a pre-defined set of hyperparameters without regard for past performance. As models increase in complexity and training time, grid searches become unwieldly.
@@ -29,7 +30,7 @@ Idealy, we would use the information from prior model evaluations to guide us in
   4. New parameter-score pairs are found  
   5. Repeat steps 2-4 until some stopping criteria is met  
 
-
+********
 ## Practical Example
 
 In this example, we will be using the agaricus.train dataset provided in the XGBoost package. Here, we load the packages, data, and create a folds object to be used in the scoring function.

@@ -156,14 +156,14 @@ BayesianOptimization <- function(
 
 
   # Ensure environment fidelity
-  if (!initialize & nrow(leftOff) == 0) stop("initialize cannot be FALSE if leftOff is not provided. Set initialize to TRUE and provide either initGrid or initPoints. You can provide leftOff AND initialize if you want.")
+  if (!initialize & nrow(leftOff) == 0) stop("initialize cannot be FALSE if leftOff is not provided. Set initialize to TRUE and provide either initGrid or initPoints. You can provide leftOff AND initialize if you want.\n")
   if (initialize & nrow(initGrid) == 0 & initPoints <= 0) stop("initialize is TRUE but neither initGrid or initPoints were provided")
 
   if (initPoints > 0) {
     if (nrow(initGrid)>0) stop("initGrid and initPoints are specified, choose one.")
   }
   if (parallel & (Workers == 1)) stop("parallel is set to TRUE but no back end is registered.\n")
-  if (!parallel & Workers > 1) cat("parallel back end is registered, but parallel is set to false. Process will not be run in parallel.\n")
+  if (!parallel & Workers > 1 & verbose > 0) cat("parallel back end is registered, but parallel is set to false. Process will not be run in parallel.\n")
   if (nrow(initGrid)>0) {
     if (sum(sapply(ParamNames, CheckBounds,initGrid, bounds))>0) stop("initGrid not within bounds.")
   }
@@ -184,7 +184,7 @@ BayesianOptimization <- function(
         InitFeedParams <- data.table(sapply(ParamNames,RandParams,initPoints, bounds))
       }
 
-      if (verbose > 0) cat("\nRunning initial scoring function",nrow(InitFeedParams),"times in",Workers,"thread(s).")
+      if (verbose > 0) cat("\nRunning initial scoring function",nrow(InitFeedParams),"times in",Workers,"thread(s).\n")
       sink("NUL")
       ScoreDT <- foreach( iter = 1:nrow(InitFeedParams)
                         , .combine = rbind
@@ -206,7 +206,7 @@ BayesianOptimization <- function(
       # Append leftOff if its names match ScoreDT
       if (nrow(leftOff) > 0) {
         if (!identical(sort(c("Iteration",names(ScoreDT))),sort(names(leftOff)))) {
-        cat("\nNames from scoring function do not match leftOff table. Continuing without using leftOff table.\n")
+          if (verbose > 0) cat("\nNames from scoring function do not match leftOff table. Continuing without using leftOff table.\n")
         } else{
         ScoreDT <- rbind(ScoreDT,leftOff, fill = TRUE)
         }
@@ -226,10 +226,10 @@ BayesianOptimization <- function(
   # Save Intermediary Output
   if (!is.null(saveIntermediate)) {
     tryCatch({suppressWarnings(saveRDS(ScoreDT, file = saveIntermediate))
-      cat("\n   Saving Intermediary Results with ",nrow(ScoreDT)," rows to \n   ",saveIntermediate,"\n   This is the first Save/Overwrite.\n")
+      if (verbose > 0) cat("\n   Saving Intermediary Results with ",nrow(ScoreDT)," rows to \n   ",saveIntermediate,"\n   This is the first Save/Overwrite.\n")
       Overwrites <- Overwrites + 1}
       , error = function(e) {
-        if (verbose > 0) cat("\n\n === Failed to save intermediary results. Please check file path.\n     This message will repeat. === \n")
+        if (verbose > 0) {cat("\n === Failed to save intermediary results. Please check file path.\n     This message will repeat. === \n")}
       }
     )
   }
@@ -250,7 +250,7 @@ BayesianOptimization <- function(
 
     Iter <- Iter + 1
 
-    if (verbose > 0) cat("\n\nStarting round number",Iter)
+    if (verbose > 0) cat("\nStarting round number",Iter)
 
     # How many runs to make this session
       runNew <- pmin(nIters-nrow(ScoreDT), bulkNew)
@@ -366,7 +366,7 @@ BayesianOptimization <- function(
         Overwrites <- Overwrites + 1
       }
       , error = function(e) {
-        if (verbose > 0) cat("\n\n === Failed to save intermediary results. Please check file path.\n     This message will repeat. === \n")
+        if (verbose > 0) cat("\n === Failed to save intermediary results. Please check file path. === \n")
       }
       )
     }

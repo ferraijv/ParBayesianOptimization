@@ -25,34 +25,34 @@ library("doParallel")
 
 data(agaricus.train, package = "xgboost")
 
-Folds <- list(  Fold1 = as.integer(seq(1,nrow(agaricus.train$data),by = 3))
-                , Fold2 = as.integer(seq(2,nrow(agaricus.train$data),by = 3))
-                , Fold3 = as.integer(seq(3,nrow(agaricus.train$data),by = 3)))
+Folds <- list(Fold1 = as.integer(seq(1,nrow(agaricus.train$data),by = 3))
+            , Fold2 = as.integer(seq(2,nrow(agaricus.train$data),by = 3))
+            , Fold3 = as.integer(seq(3,nrow(agaricus.train$data),by = 3)))
 
 scoringFunction <- function(max_depth, min_child_weight, subsample) {
 
   dtrain <- xgb.DMatrix(agaricus.train$data,label = agaricus.train$label)
   
   Pars <- list( booster = "gbtree"
-                , eta = 0.01
-                , max_depth = max_depth
-                , min_child_weight = min_child_weight
-                , subsample = subsample
-                , objective = "binary:logistic"
-                , eval_metric = "auc")
+              , eta = 0.01
+              , max_depth = max_depth
+              , min_child_weight = min_child_weight
+              , subsample = subsample
+              , objective = "binary:logistic"
+              , eval_metric = "auc")
 
-  xgbcv <- xgb.cv(params = Pars,
-                  data = dtrain
-                  , nround = 100
-                  , folds = Folds
-                  , prediction = TRUE
-                  , showsd = TRUE
-                  , early_stopping_rounds = 5
-                  , maximize = TRUE
-                  , verbose = 0)
+  xgbcv <- xgb.cv(params = Pars
+                , data = dtrain
+                , nround = 100
+                , folds = Folds
+                , prediction = TRUE
+                , showsd = TRUE
+                , early_stopping_rounds = 5
+                , maximize = TRUE
+                , verbose = 0)
 
   return(list(Score = max(xgbcv$evaluation_log$test_auc_mean)
-             , nrounds = xgbcv$best_iteration
+            , nrounds = xgbcv$best_iteration
              )
          )
 }
@@ -94,7 +94,7 @@ ScoreResult <- BayesianOptimization(FUN = scoringFunction
 
 ScoreResult$BestPar
 ```
-
+*******
 ### Re-using Intermediary Results in Later Experiment
 
 Unfortunately, our experiments do not always give us the results we want. Maybe we didn't let it run long enough, or maybe we used the wrong kernel. It could be very time intensive and aggravating to re-initialize the process. Fortunately, the ```BayesianOptimization``` function allows us to, at every update, save our parameter-score pairs as an RDS and re-use them as our initial set in the future. This ensures that the time intensive process of running the scoring function is not wasted.  
@@ -110,7 +110,7 @@ ScoreResults <- BayesianOptimization(
   )
 ```
 
-If a file currently exists, it will not be overwritten. After this process has run, this file can be recalled and passed to the ```BayesianOptimization``` function in the ```leftoff``` parameter:  
+If a file currently exists, it **WILL** be overwritten. After this process has run, this file can be recalled and passed to the ```BayesianOptimization``` function in the ```leftoff``` parameter:  
 ```{r eval = FALSE, results='hide', echo=TRUE}
 
 priorRuns <- readRDS("../Intermediary Results/Experiment1.RDS") 
@@ -126,12 +126,13 @@ ScoreResults <- BayesianOptimization(
 ```
 
 When a leftOff table is provided, depending on how the experiment is set up, one of two things will happen:  
+
   1. If ```initialize``` is TRUE, the process will initialize normally and append the leftOff table when it fits Gaussian Process'  
   2. If ```initialize``` is FALSE, the process will treat leftOff as the only initial parameter-score pairs. We can start fitting our priors without having to run the scoring function at all!  
   
 Keep in mind, if you change your bounds, you will need to delete any rows from your leftOff table that fall outside the bounds.
 
-
+********
 ### Adjusting the noiseAdd parameter
 
 Once we have extracted the next expected optimal parameter set from the Gaussian process, we have several decisions to make. We can run 1 new scoringFunction at the new parameter, or we can run the scoring function n times in parallel at n different parameter sets. If we run several scoringFunctions in parallel, we need to decide where the other n-1 parameter sets come from. For the sake of decreasing uncertainty around the estimated optimal parameter, this process pulls the other n-1 parameter sets from a shape(4,4) beta distribution centered at the estimated optimal parameter.
