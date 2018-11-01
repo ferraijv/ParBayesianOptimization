@@ -92,7 +92,7 @@ ScoreResult <- BayesianOptimization(FUN = scoringFunction
                                   , export = export
                                   , noiseAdd = 0.25)
 
-ScoreResult$BestPar
+#ScoreResult$BestPar
 ```
 *******
 ### Re-using Intermediary Results in Later Experiment
