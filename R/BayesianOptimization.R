@@ -128,7 +128,6 @@
 #' @importFrom data.table data.table setDT setcolorder := as.data.table
 #' @importFrom utils head
 #' @importFrom GauPro GauPro_kernel_model Matern52 Matern32 Exponential Gaussian
-#' @import R6
 #' @export
 
 BayesianOptimization <- function(
