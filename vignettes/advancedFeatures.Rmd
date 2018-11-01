@@ -16,7 +16,7 @@ options(width = 1000)
 
 ### Running in Parallel
 
-Fortunuately, the most time intensive part of our parameter search (running the scoring function) can easily be done in parallel. ```PayBayesianOptimization``` creates a flexible framework for setting up your parameter search as efficiently as possible. The steps are similar to a vanilla implementation of BayesianOptimization as seen in the first vignette, we just need to load a package that allows us to register a parallel backend and define a few extra variables. In this vignette, we use ```doParallel```:
+Fortunuately, the most time intensive part of our parameter search (running the scoring function) can easily be done in parallel. ```PayBayesianOptimization``` creates a flexible framework for setting up your parameter search as efficiently as possible. The steps are similar to a vanilla implementation of BayesianOptimization as seen in the first vignette, we just need to load a package that allows us to register a parallel backend and define a few extra variables. On a Windows machine, you can use ```doParallel```:
 
 ```{r eval = TRUE, results='hide', echo=TRUE, message=FALSE}
 library("xgboost")
@@ -76,7 +76,7 @@ export <- c('Folds','agaricus.train')
 
 We are now ready to start our parameter search. If you want to make full use of your core cluster, bulkNew should be set to be the same as the number of registered cores. Once again, we can interrogate ```ScoreResults$BestPar``` to see the best parameters as of each iteration:
 
-```{r eval = TRUE, echo=TRUE}
+```{r eval = FALSE, echo=TRUE}
 cl <- makeCluster(2)
 registerDoParallel(cl)
 ScoreResult <- BayesianOptimization(FUN = scoringFunction
@@ -91,8 +91,6 @@ ScoreResult <- BayesianOptimization(FUN = scoringFunction
                                   , packages = packages
                                   , export = export
                                   , noiseAdd = 0.25)
-
-ScoreResult$BestPar
 ```
 *******
 ### Re-using Intermediary Results in Later Experiment
