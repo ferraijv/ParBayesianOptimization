@@ -63,7 +63,7 @@
 #' @param verbose Whether or not to print progress. If 0, nothing will be printed.
 #'   If 1, progress will be printed. If 2, progress and information about new parameter-score pairs will be printed.
 #' @return A list containing details about the process:
-#' \item{GPlist}{  T list of the gaussian process objects that were fit.}
+#' \item{GPlist}{  The list of the gaussian process objects that were fit.}
 #' \item{OptParDT}{  The optimal parameters according to each gaussian process}
 #' \item{ScoreDT}{  A list of all parameter-score pairs, as well as extra columns from FUN}
 #' \item{BestPars}{  The best parameter set at each iteration}
@@ -128,6 +128,7 @@
 #' @importFrom data.table data.table setDT setcolorder := as.data.table
 #' @importFrom utils head
 #' @importFrom GauPro GauPro_kernel_model Matern52 Matern32 Exponential Gaussian
+#' @import R6
 #' @export
 
 BayesianOptimization <- function(
@@ -170,7 +171,6 @@ BayesianOptimization <- function(
   ParMethod <- function(x) if(x) `%dopar%` else `%do%`
   `%op%` <- ParMethod(parallel)
   Workers <- getDoParWorkers()
-
 
   # Ensure environment fidelity
   if (!initialize & nrow(leftOff) == 0) stop("initialize cannot be FALSE if leftOff is not provided. Set initialize to TRUE and provide either initGrid or initPoints. You can provide leftOff AND initialize if you want.\n")
@@ -398,5 +398,3 @@ BayesianOptimization <- function(
 
 }
 utils::globalVariables(c("iter","Iteration","Score",".","GauPro_kernel_beta","GauPro_kernel_model","GP_Utility"))
-
-
