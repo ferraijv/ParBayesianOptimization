@@ -15,7 +15,7 @@ BayesianOptimization(FUN, bounds, saveIntermediate = NULL,
 \arguments{
 \item{FUN}{the function to be maximized. This function should return a named list with at least 1 component.
 The first component must be named \code{Score} and should contain the metric to be maximized.
-The returned list may contain other named scalar elements that you wish to include in the final summary table.}
+You may return other named scalar elements that you wish to include in the final summary table.}
 
 \item{bounds}{named list of lower and upper bounds for each hyperparameter.
 The names of the list should be arguments passed to \code{FUN}.
@@ -25,13 +25,14 @@ Use "L" suffix to indicate integer hyperparameters.}
 save a data.table as an RDS that can be specified as the \code{leftOff} parameter.}
 
 \item{leftOff}{data.table containing parameter-Score pairs. If supplied, the process will rbind this table
-to the parameter-Score pairs obtained through initialization. If Initialization is \code{FALSE}, the iterative
-Gaussian fitting will be started on the leftOff table. This table should be obtained from the file saved by \code{saveIntermediate}.}
+to the parameter-Score pairs obtained through initialization.
+This table should be obtained from the file saved by \code{saveIntermediate}.}
 
 \item{parallel}{should the process run in parallel? If TRUE, several criteria must be met:
 \itemize{
   \item A parallel backend must be registered
-  \item \code{FUN} must be executable using the only packages specified in \code{packages} and the objects specified in \code{export}
+  \item \code{FUN} must be executable using only packages specified in \code{packages} (and base packages)
+  \item \code{FUN} must be executable using only the the objects specified in \code{export}
   \item The function must be thread safe.
 }}
 
@@ -60,7 +61,7 @@ scoring function before Bayesian Optimization fitting the Gaussian Process.}
   \item \code{"Matern32"}
 }}
 
-\item{beta}{the kernel lengthscale parameter log10(theta)}
+\item{beta}{the kernel lengthscale parameter log10(theta). Passed to \code{GauPro_kernel_beta} specified in kern.}
 
 \item{acq}{acquisition function type to be used. Can be "ucb", "ei", "eips" or "poi".
 \itemize{
@@ -71,74 +72,37 @@ scoring function before Bayesian Optimization fitting the Gaussian Process.}
 }}
 
 \item{stopImpatient}{a list containing \code{rounds} and \code{newAcq}, if \code{acq = "eips"} you
-can switch the acquisition function to \code{newAcq} after \code{rounds} rounds}
+can switch the acquisition function to \code{newAcq} after \code{rounds} parameter-score pairs are found.}
 
 \item{kappa}{tunable parameter kappa of GP Upper Confidence Bound, to balance exploitation against exploration,
-increasing kappa will make the optimized hyperparameters pursuing exploration.}
+increasing kappa will incentivise exploration.}
 
-\item{eps}{tunable parameter epsilon of Expected Improvement and Probability of Improvement, to balance exploitation against exploration,
-increasing epsilon will make the optimized hyperparameters are more spread out across the whole range.}
+\item{eps}{tunable parameter epsilon of ei, eips and poi. Balances exploitation against exploration.
+Increasing eps will make the "improvement" threshold higher.}
 
-\item{gsPoints}{integer that specifies how many initial points to try when searching for the optimal parameter set.}
+\item{gsPoints}{integer that specifies how many initial points to try when searching for the optimal parameter set.
+Increase this for a higher chance to find global optimum, at the expense of more time.}
 
-\item{convThresh}{convergence threshold passed to \code{factr} when the \code{optim} function is called.
+\item{convThresh}{convergence threshold passed to \code{factr} when the \code{optim} function (L-BFGS-B) is called.
 Lower values will take longer to converge, but may be more accurate.}
 
-\item{noiseAdd}{specifies how much noise to add to the "best" parameter set found.
-New random draws are pulled from a beta distribution centered at the best parameter with a range equal to
-\code{noiseAdd*(Upper Bound - Lower Bound)}}
+\item{noiseAdd}{if bulkNew > 1, specifies how much noise to add to the optimal candidate parameter set
+to obtain the other \code{bulkNew-1} candidate parameter sets. New random draws are pulled from
+a shape(4,4) beta distribution centered at the optimal candidate parameter set
+with a range equal to \code{noiseAdd*(Upper Bound - Lower Bound)}}
 
 \item{verbose}{Whether or not to print progress. If 0, nothing will be printed.
 If 1, progress will be printed. If 2, progress and information about new parameter-score pairs will be printed.}
 }
 \value{
-A data.table with each parameter-Score pair.
+A list containing details about the process:
+\item{GPlist}{  T list of the gaussian process objects that were fit.}
+\item{OptParDT}{  The optimal parameters according to each gaussian process}
+\item{ScoreDT}{  A list of all parameter-score pairs, as well as extra columns from FUN}
+\item{BestPars}{  The best parameter set at each iteration}
 }
 \description{
 Flexible Bayesian optimization of model hyperparameters.
-}
-\examples{
-\dontrun{
-require(xgboost)
-data(agaricus.train, package = "xgboost")
-dtrain <- xgb.DMatrix(agaricus.train$data,label = agaricus.train$label)
-
-Folds <- list(  Fold1 = as.integer(seq(1,nrow(agaricus.train$data),by = 3))
-                , Fold2 = as.integer(seq(2,nrow(agaricus.train$data),by = 3))
-                , Fold3 = as.integer(seq(3,nrow(agaricus.train$data),by = 3)))
-
-xgb_cv_bayes <- function(max_depth, min_child_weight, subsample) {
-
-  dtrain <- xgb.DMatrix(agaricus.train$data,label = agaricus.train$label)
-
-  cv <- xgb.cv(params = list(booster = "gbtree", eta = 0.01,
-                             max_depth = max_depth,
-                             min_child_weight = min_child_weight,
-                             subsample = subsample, colsample_bytree = 0.3,
-                             lambda = 1, alpha = 0,
-                             objective = "binary:logistic",
-                             eval_metric = "auc"),
-               data = dtrain, nround = 100,
-               folds = Folds, prediction = TRUE, showsd = TRUE,
-               early_stopping_rounds = 5, maximize = TRUE, verbose = 0)
-  return(list(Score = cv$evaluation_log$test_auc_mean[cv$best_iteration]))
-}
-
-ScoreResult <- BayesianOptimization(  FUN = xgb_cv_bayes
-                                      , bounds = list(max_depth = c(2L, 6L),
-                                                      min_child_weight = c(1L, 10L),
-                                                      subsample = c(0.5, 0.8))
-                                      , initGrid = NULL
-                                      , initPoints = 10
-                                      , nIters = 20
-                                      , kern = Matern52$new(0)
-                                      , acq = "ucb"
-                                      , kappa = 2.576
-                                      , verbose = TRUE
-                                      , parallel = FALSE
-                                      , packages = 'xgboost'
-                                      , export = c('Folds','agaricus.train'))
-}
 }
 \references{
 Jasper Snoek, Hugo Larochelle, Ryan P. Adams (2012) \emph{Practical Bayesian Optimization of Machine Learning Algorithms}

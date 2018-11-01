@@ -3,3 +3,4 @@ Admin
 .Rbuildignore
 .Rhistory
 ParBayesianOptimization.Rproj
+README.Rmd

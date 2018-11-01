@@ -5,19 +5,20 @@
 #'
 #' @param FUN the function to be maximized. This function should return a named list with at least 1 component.
 #'   The first component must be named \code{Score} and should contain the metric to be maximized.
-#'   The returned list may contain other named scalar elements that you wish to include in the final summary table.
+#'   You may return other named scalar elements that you wish to include in the final summary table.
 #' @param bounds named list of lower and upper bounds for each hyperparameter.
 #'   The names of the list should be arguments passed to \code{FUN}.
 #'   Use "L" suffix to indicate integer hyperparameters.
 #' @param saveIntermediate character filepath (including file name) that specifies the location to save intermediary results. This will
 #'   save a data.table as an RDS that can be specified as the \code{leftOff} parameter.
 #' @param leftOff data.table containing parameter-Score pairs. If supplied, the process will rbind this table
-#'   to the parameter-Score pairs obtained through initialization. If Initialization is \code{FALSE}, the iterative
-#'   Gaussian fitting will be started on the leftOff table. This table should be obtained from the file saved by \code{saveIntermediate}.
+#'   to the parameter-Score pairs obtained through initialization.
+#'   This table should be obtained from the file saved by \code{saveIntermediate}.
 #' @param parallel should the process run in parallel? If TRUE, several criteria must be met:
 #' \itemize{
 #'   \item A parallel backend must be registered
-#'   \item \code{FUN} must be executable using the only packages specified in \code{packages} and the objects specified in \code{export}
+#'   \item \code{FUN} must be executable using only packages specified in \code{packages} (and base packages)
+#'   \item \code{FUN} must be executable using only the the objects specified in \code{export}
 #'   \item The function must be thread safe.
 #' }
 #' @param export character vector of object names needed to evaluate \code{FUN}.
@@ -37,7 +38,7 @@
 #'   \item \code{"Matern52"}
 #'   \item \code{"Matern32"}
 #' }
-#' @param beta the kernel lengthscale parameter log10(theta)
+#' @param beta the kernel lengthscale parameter log10(theta). Passed to \code{GauPro_kernel_beta} specified in kern.
 #' @param acq acquisition function type to be used. Can be "ucb", "ei", "eips" or "poi".
 #' \itemize{
 #'   \item \code{ucb}   Upper Confidence Bound
@@ -46,62 +47,83 @@
 #'   \item \code{poi}   Probability of Improvement
 #' }
 #' @param stopImpatient a list containing \code{rounds} and \code{newAcq}, if \code{acq = "eips"} you
-#'   can switch the acquisition function to \code{newAcq} after \code{rounds} rounds
+#'   can switch the acquisition function to \code{newAcq} after \code{rounds} parameter-score pairs are found.
 #' @param kappa tunable parameter kappa of GP Upper Confidence Bound, to balance exploitation against exploration,
-#'   increasing kappa will make the optimized hyperparameters pursuing exploration.
-#' @param eps tunable parameter epsilon of Expected Improvement and Probability of Improvement, to balance exploitation against exploration,
-#'   increasing epsilon will make the optimized hyperparameters are more spread out across the whole range.
+#'   increasing kappa will incentivise exploration.
+#' @param eps tunable parameter epsilon of ei, eips and poi. Balances exploitation against exploration.
+#'   Increasing eps will make the "improvement" threshold higher.
 #' @param gsPoints integer that specifies how many initial points to try when searching for the optimal parameter set.
-#' @param convThresh convergence threshold passed to \code{factr} when the \code{optim} function is called.
+#'   Increase this for a higher chance to find global optimum, at the expense of more time.
+#' @param convThresh convergence threshold passed to \code{factr} when the \code{optim} function (L-BFGS-B) is called.
 #'   Lower values will take longer to converge, but may be more accurate.
-#' @param noiseAdd specifies how much noise to add to the "best" parameter set found.
-#'   New random draws are pulled from a beta distribution centered at the best parameter with a range equal to
-#'   \code{noiseAdd*(Upper Bound - Lower Bound)}
+#' @param noiseAdd if bulkNew > 1, specifies how much noise to add to the optimal candidate parameter set
+#'   to obtain the other \code{bulkNew-1} candidate parameter sets. New random draws are pulled from
+#'   a shape(4,4) beta distribution centered at the optimal candidate parameter set
+#'   with a range equal to \code{noiseAdd*(Upper Bound - Lower Bound)}
 #' @param verbose Whether or not to print progress. If 0, nothing will be printed.
 #'   If 1, progress will be printed. If 2, progress and information about new parameter-score pairs will be printed.
-#' @return A data.table with each parameter-Score pair.
+#' @return A list containing details about the process:
+#' \item{GPlist}{  T list of the gaussian process objects that were fit.}
+#' \item{OptParDT}{  The optimal parameters according to each gaussian process}
+#' \item{ScoreDT}{  A list of all parameter-score pairs, as well as extra columns from FUN}
+#' \item{BestPars}{  The best parameter set at each iteration}
 #' @references Jasper Snoek, Hugo Larochelle, Ryan P. Adams (2012) \emph{Practical Bayesian Optimization of Machine Learning Algorithms}
 #' @examples
 #' \dontrun{
-#' require(xgboost)
+#' library("xgboost")
+#' library("ParBayesianOptimization")
+#'
 #' data(agaricus.train, package = "xgboost")
-#' dtrain <- xgb.DMatrix(agaricus.train$data,label = agaricus.train$label)
 #'
 #' Folds <- list(  Fold1 = as.integer(seq(1,nrow(agaricus.train$data),by = 3))
 #'                 , Fold2 = as.integer(seq(2,nrow(agaricus.train$data),by = 3))
 #'                 , Fold3 = as.integer(seq(3,nrow(agaricus.train$data),by = 3)))
 #'
-#' xgb_cv_bayes <- function(max_depth, min_child_weight, subsample) {
+#' scoringFunction <- function(max_depth, min_child_weight, subsample) {
 #'
 #'   dtrain <- xgb.DMatrix(agaricus.train$data,label = agaricus.train$label)
 #'
-#'   cv <- xgb.cv(params = list(booster = "gbtree", eta = 0.01,
-#'                              max_depth = max_depth,
-#'                              min_child_weight = min_child_weight,
-#'                              subsample = subsample, colsample_bytree = 0.3,
-#'                              lambda = 1, alpha = 0,
-#'                              objective = "binary:logistic",
-#'                              eval_metric = "auc"),
-#'                data = dtrain, nround = 100,
-#'                folds = Folds, prediction = TRUE, showsd = TRUE,
-#'                early_stopping_rounds = 5, maximize = TRUE, verbose = 0)
-#'   return(list(Score = cv$evaluation_log$test_auc_mean[cv$best_iteration]))
-#' }
+#'   Pars <- list( booster = "gbtree"
+#'                 , eta = 0.01
+#'                 , max_depth = max_depth
+#'                 , min_child_weight = min_child_weight
+#'                 , subsample = subsample
+#'                 , objective = "binary:logistic"
+#'                 , eval_metric = "auc")
 #'
-#' ScoreResult <- BayesianOptimization(  FUN = xgb_cv_bayes
-#'                                       , bounds = list(max_depth = c(2L, 6L),
-#'                                                       min_child_weight = c(1L, 10L),
-#'                                                       subsample = c(0.5, 0.8))
-#'                                       , initGrid = NULL
+#'   xgbcv <- xgb.cv(params = Pars,
+#'                   data = dtrain
+#'                   , nround = 100
+#'                   , folds = Folds
+#'                   , prediction = TRUE
+#'                   , showsd = TRUE
+#'                   , early_stopping_rounds = 5
+#'                   , maximize = TRUE
+#'                   , verbose = 0)
+#'
+#'   return(list(Score = max(xgbcv$evaluation_log$test_auc_mean)
+#'               , nrounds = xgbcv$best_iteration
+#'               )
+#'   )
+#'
+#'   bounds <- list( max_depth = c(2L, 10L)
+#'                   , min_child_weight = c(1L, 100L)
+#'                   , subsample = c(0.25, 1))
+#'
+#'   kern <- "Matern52"
+#'
+#'   acq <- "ei"
+#'
+#'   ScoreResult <- BayesianOptimization(FUN = scoringFunction
+#'                                       , bounds = bounds
 #'                                       , initPoints = 10
-#'                                       , nIters = 20
-#'                                       , kern = Matern52$new(0)
-#'                                       , acq = "ucb"
+#'                                       , bulkNew = 1
+#'                                       , nIters = 12
+#'                                       , kern = kern
+#'                                       , acq = acq
 #'                                       , kappa = 2.576
-#'                                       , verbose = TRUE
-#'                                       , parallel = FALSE
-#'                                       , packages = 'xgboost'
-#'                                       , export = c('Folds','agaricus.train'))
+#'                                       , verbose = 1
+#'                                       , parallel = FALSE)
 #' }
 #' @importFrom data.table data.table setDT setcolorder := as.data.table
 #' @importFrom utils head
@@ -133,6 +155,9 @@ BayesianOptimization <- function(
   , verbose = 1
 ) {
 
+  StartT <- Sys.time()
+
+  # Set counters and other helper objects
   ParamNames <- names(bounds)
   packages <- unique(c('data.table',packages))
   setDT(initGrid)
@@ -140,14 +165,6 @@ BayesianOptimization <- function(
   Overwrites <- 0
   Iter <- 0
   kern <- assignKern(kern,beta)
-
-  StartT <- Sys.time()
-
-  BoundsDT <- data.table( Param = ParamNames
-                          , LowerB = sapply(bounds,FUN = function(x) x[1])
-                          , UpperB = sapply(bounds,FUN = function(x) x[2])
-                          , Class = sapply(bounds, class)
-  )
 
   # Define processing function
   ParMethod <- function(x) if(x) `%dopar%` else `%do%`
@@ -158,10 +175,8 @@ BayesianOptimization <- function(
   # Ensure environment fidelity
   if (!initialize & nrow(leftOff) == 0) stop("initialize cannot be FALSE if leftOff is not provided. Set initialize to TRUE and provide either initGrid or initPoints. You can provide leftOff AND initialize if you want.\n")
   if (initialize & nrow(initGrid) == 0 & initPoints <= 0) stop("initialize is TRUE but neither initGrid or initPoints were provided")
-
-  if (initPoints > 0) {
-    if (nrow(initGrid)>0) stop("initGrid and initPoints are specified, choose one.")
-  }
+  if (initPoints > 0 & nrow(initGrid)>0) stop("initGrid and initPoints are specified, choose one.")
+  if (initPoints <= 0 & nrow(initGrid)==0) stop("neither initGrid or initPoints are specified, choose one or provide leftOff")
   if (parallel & (Workers == 1)) stop("parallel is set to TRUE but no back end is registered.\n")
   if (!parallel & Workers > 1 & verbose > 0) cat("parallel back end is registered, but parallel is set to false. Process will not be run in parallel.\n")
   if (nrow(initGrid)>0) {
@@ -219,7 +234,6 @@ BayesianOptimization <- function(
   ScoreDT[,("Iteration") := rep(0,nrow(ScoreDT))]
   extraRet <- setdiff(names(ScoreDT),c("Iteration",ParamNames,"Elapsed","Score"))
   setcolorder(ScoreDT,c("Iteration",ParamNames,"Elapsed","Score",extraRet))
-
 
   Time <- Sys.time()
 
@@ -279,8 +293,8 @@ BayesianOptimization <- function(
     GPlist[[Iter]] <- GP
 
     # Create random points to initialize local maximum search.
-    LocalTries <- data.table(sapply(ParamNames,RandParams,gsPoints, bounds))
-    LocalTryMM <- data.table(sapply(ParamNames, MinMaxScale, LocalTries, bounds))
+    LocalTries <- data.table(sapply(ParamNames,RandParams,gsPoints,bounds))
+    LocalTryMM <- data.table(sapply(ParamNames,MinMaxScale,LocalTries,bounds))
 
     # Try gsPoints starting points to find parameter set that optimizes Acq
     if (verbose > 0) cat("\n  2) Running global optimum search...")
@@ -310,7 +324,7 @@ BayesianOptimization <- function(
     } else NoisyP <- data.table(NoisyP)
 
 
-    if (verbose > 0) cat("\n  3) Running scoring function",nrow(NoisyP),"times in",Workers,"thread(s)...")
+    if (verbose > 0) cat("\n  3) Running scoring function",nrow(NoisyP),"times in",Workers,"thread(s)...\n")
     sink("NUL")
     NewResults <- foreach( iter = 1:nrow(NoisyP)
                          , .combine = rbind
@@ -334,7 +348,7 @@ BayesianOptimization <- function(
     # Print updates on parameter-score search
     if (verbose > 1) {
 
-      cat("\n\nResults from most recent parameter scoring:\n")
+      cat("\nResults from most recent parameter scoring:\n")
       print(NewResults, row.names = FALSE)
 
       if (max(NewResults$Score) > max(ScoreDT$Score)) {
