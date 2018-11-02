@@ -10,3 +10,4 @@ LazyData: true
 RoxygenNote: 6.1.0.9000
 Suggests: knitr,rmarkdown,xgboost,doParallel,ggplot2
 VignetteBuilder: knitr
+Maintainer: Samuel Wilson <samwilson303@gmail.com>
